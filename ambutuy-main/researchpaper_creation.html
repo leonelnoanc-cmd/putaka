@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Research Paper Editor</title>
+
+    <!-- Quill CSS -->
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        select, button, input[type="range"] {
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        #editor {
+            height: auto;
+            min-height: 400px;
+        }
+
+        .done-btn {
+            margin-top: 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px 15px;
+            border-radius: 5px;
+        }
+
+        .done-btn:hover {
+            background: #0056b3;
+        }
+
+        .output {
+            margin-top: 20px;
+            background: #eef1f4;
+            padding: 10px;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+
+        /* === DOCUMENT FORMATTING RULES === */
+        .ql-editor {
+            font-family: "Bookman Old Style", serif;
+            font-size: 12pt;
+            line-height: 2;
+
+            width: 210mm;
+            min-height: 297mm;
+
+            margin: 0 auto;
+            padding: 1in;              /* margins only */
+            box-sizing: border-box;    /* CRITICAL */
+
+            background-color: #fff;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+
+        @media print {
+            .ql-editor {
+                size: A4;
+                margin: 0;
+                padding: 1in;
+                box-shadow: none;
+                page-break-after: always;
+            }
+        }
+
+        /* First-line indent 0.5 inch */
+        .ql-editor p {
+            margin: 0;
+        }
+
+        /* Ruler */
+        #ruler {
+            width: 210mm;
+            height: 24px;
+            background: #f0f0f0;
+            position: relative;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+
+
+        .margin-handle {
+            position: absolute;
+            width: 4px;
+            height: 20px;
+            background: #007bff;
+            cursor: ew-resize;
+            top: 0;
+            z-index: 4;
+        }
+
+        /* Margin number labels shown above the ruler (above the paper) */
+        .margin-label {
+            position: absolute;
+            bottom: calc(100% + 6px);
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 120ms ease-in-out;
+        }
+
+        .margin-label.visible {
+            opacity: 1;
+        }
+
+        /* Ruler tick marks */
+        #ruler .ticks {
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .tick {
+            position: absolute;
+            bottom: 2px;
+            width: 1px;
+            background: #444;
+        }
+
+        .tick.short { height: 6px; }
+        .tick.medium { height: 10px; }
+        .tick.long { height: 14px; background: #000; }
+
+        .tick-label {
+            position: absolute;
+            bottom: 18px;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #333;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* Vertical margin guide lines that match typing area */
+        .margin-guide {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(0,0,0,0.28);
+            z-index: 3;
+            pointer-events: none;
+        }
+        .margin-guide.right {
+            left: auto;
+        }
+
+        .left {
+            left: 96px; /* 1 inch */
+        }
+
+        .right {
+            right: 96px; /* 1 inch */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Research Paper Editor</h2>
+
+    <div class="controls">
+    </div>
+
+    <!-- Toolbar -->
+    <div id="toolbar"></div>
+
+    <!-- Ruler -->
+    <div id="ruler">
+        <div class="margin-handle left" id="leftHandle"></div>
+        <div class="margin-label left" id="leftLabel"></div>
+        <div class="ticks" id="ticks"></div>
+        <div class="margin-handle right" id="rightHandle"></div>
+        <div class="margin-label right" id="rightLabel"></div>
+    </div>
+
+    <!-- Editor -->
+    <div id="editor"></div>
+
+    <button class="done-btn" onclick="submitPaper()">Done</button>
+
+</div>
+
+<!-- Quill JS -->
+<script src="https://cdn.quilljs.com/1.3.7/quill.js"></script>
+
+<script>
+    // Initialize Quill
+    const quill = new Quill('#editor', {
+        theme: 'snow',
+        modules: {
+            toolbar: [
+                ['bold', 'italic'],         // Bold & Italic
+                [{ background: [] }],       // Highlight
+                [{ list: 'ordered' }, { list: 'bullet' }], // Numbered & bullets
+                [{ align: [] }],            // Alignment
+                ['image'],                  // Insert image
+                ['clean']                   // Remove formatting
+            ]
+        }
+    });
+
+    // Ruler drag functionality
+    let isDragging = false;
+    let currentHandle = null;
+    let startX = 0;
+    let startLeft = 0;
+
+    const leftHandle = document.getElementById('leftHandle');
+    const rightHandle = document.getElementById('rightHandle');
+    const ruler = document.getElementById('ruler');
+    const editor = document.querySelector('.ql-editor');
+
+    const leftLabel = document.getElementById('leftLabel');
+    const rightLabel = document.getElementById('rightLabel');
+    const ticksContainer = document.getElementById('ticks');
+    // margin guide elements (vertical lines inside the paper)
+    let leftGuide = null;
+    let rightGuide = null;
+
+    function ensureGuides() {
+        const editorEl = document.querySelector('.ql-editor');
+        if (!editorEl) return;
+        leftGuide = editorEl.querySelector('#leftGuide');
+        rightGuide = editorEl.querySelector('#rightGuide');
+        if (!leftGuide) {
+            leftGuide = document.createElement('div');
+            leftGuide.id = 'leftGuide';
+            leftGuide.className = 'margin-guide left';
+            editorEl.appendChild(leftGuide);
+        }
+        if (!rightGuide) {
+            rightGuide = document.createElement('div');
+            rightGuide.id = 'rightGuide';
+            rightGuide.className = 'margin-guide right';
+            editorEl.appendChild(rightGuide);
+        }
+    }
+
+    function generateRulerTicks() {
+        if (!ticksContainer) return;
+        ticksContainer.innerHTML = '';
+        const pxPerInch = 96; // assumed CSS px per inch
+        const subdivisions = 8; // eighth-inch subdivisions
+        const totalPx = ruler.offsetWidth;
+        const totalInches = Math.ceil(totalPx / pxPerInch);
+
+        for (let i = 0; i <= totalInches * subdivisions; i++) {
+            const posPx = i * (pxPerInch / subdivisions);
+            const tick = document.createElement('div');
+            tick.className = 'tick';
+
+            if (i % subdivisions === 0) {
+                tick.classList.add('long');
+                // add label for whole inches
+                const label = document.createElement('div');
+                label.className = 'tick-label';
+                label.textContent = (i / subdivisions) + '"';
+                label.style.left = posPx + 'px';
+                ticksContainer.appendChild(label);
+            } else if (i % 4 === 0) {
+                tick.classList.add('medium');
+            } else {
+                tick.classList.add('short');
+            }
+
+            tick.style.left = posPx + 'px';
+            ticksContainer.appendChild(tick);
+        }
+    }
+
+    // Generate horizontal baseline grid inside the editor so typed lines align with ruler
+    function generateBaselineGrid() {
+        if (!editor) return;
+        const cs = window.getComputedStyle(editor);
+        // Try to get computed line-height; fall back to font-size * line-height factor
+        let lineHeight = parseFloat(cs.lineHeight);
+        if (isNaN(lineHeight)) {
+            const fontSize = parseFloat(cs.fontSize) || 16;
+            const lineHeightFactor = parseFloat(cs.lineHeight) || 2; // default from .ql-editor
+            lineHeight = fontSize * lineHeightFactor;
+        }
+
+        // Create a subtle rule line at the bottom of each line box
+        editor.style.backgroundImage = `repeating-linear-gradient(to bottom, transparent calc(${lineHeight - 1}px), rgba(0,0,0,0.06) calc(${lineHeight - 1}px))`;
+        editor.style.backgroundSize = `100% ${lineHeight}px`;
+    }
+
+    function updateMargins() {
+        const pxPerInch = 96;
+        const rulerWidth = ruler.offsetWidth;
+
+        // LEFT margin
+        const leftPx = leftHandle.offsetLeft;
+        const leftInch = leftPx / pxPerInch;
+
+        // RIGHT margin
+        const rightPx = rightHandle.offsetLeft;
+        const rightInch = (rulerWidth - rightPx) / pxPerInch;
+
+        // Apply to editor
+        editor.style.paddingLeft = leftInch + 'in';
+        editor.style.paddingRight = rightInch + 'in';
+
+        // Labels
+        leftLabel.textContent = leftInch.toFixed(2) + '"';
+        rightLabel.textContent = rightInch.toFixed(2) + '"';
+
+        leftLabel.style.left = leftPx + 'px';
+        rightLabel.style.left = rightPx + 'px';
+
+        // Guides
+        ensureGuides();
+        leftGuide.style.left = leftInch + 'in';
+        rightGuide.style.right = rightInch + 'in';
+    }
+
+
+    leftHandle.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        currentHandle = leftHandle;
+        startX = e.clientX;
+        startLeft = parseFloat(leftHandle.style.left) || 96;
+        if (leftLabel) leftLabel.classList.add('visible');
+    });
+
+    rightHandle.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        currentHandle = rightHandle;
+        startX = e.clientX;
+        startLeft = parseFloat(rightHandle.style.right) || 96;
+        if (rightLabel) rightLabel.classList.add('visible');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        const rulerRect = ruler.getBoundingClientRect();
+        let x = e.clientX - rulerRect.left;
+
+        // Clamp inside ruler
+        x = Math.max(0, Math.min(x, ruler.offsetWidth - 1));
+
+        if (currentHandle === leftHandle) {
+            leftHandle.style.left = x + 'px';
+        } else {
+            rightHandle.style.left = x + 'px';
+        }
+
+        updateMargins();
+    });
+
+
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        currentHandle = null;
+        // hide labels when finished dragging
+        if (leftLabel) leftLabel.classList.remove('visible');
+        if (rightLabel) rightLabel.classList.remove('visible');
+    });
+
+    // Show labels on hover
+    leftHandle.addEventListener('mouseenter', () => { if (leftLabel) leftLabel.classList.add('visible'); });
+    leftHandle.addEventListener('mouseleave', () => { if (leftLabel) leftLabel.classList.remove('visible'); });
+    rightHandle.addEventListener('mouseenter', () => { if (rightLabel) rightLabel.classList.add('visible'); });
+    rightHandle.addEventListener('mouseleave', () => { if (rightLabel) rightLabel.classList.remove('visible'); });
+
+    // ================================
+    // INITIAL SETUP (AFTER DOM READY)
+    // ================================
+    generateRulerTicks();
+    generateBaselineGrid();
+    ensureGuides();
+
+    /* Set default 1-inch margins */
+    const pxPerInch = 96;
+    leftHandle.style.left = pxPerInch + 'px';
+    rightHandle.style.left = (ruler.offsetWidth - pxPerInch) + 'px';
+
+    updateMargins();
+
+
+    // re-generate ticks and grid on resize
+    window.addEventListener('resize', () => {
+        generateRulerTicks();
+        generateBaselineGrid();
+        updateMargins();
+    });
+
+    function submitPaper() {
+        const content = quill.root.innerHTML;
+
+        if (quill.getText().trim() === "") {
+            alert("Please write some content.");
+            return;
+        }
+
+        // Here you could save the content, e.g., send to server
+        alert("Paper section submitted successfully!");
+        window.location.href = 'submission.html';
+
+        const pxPerInch = 96;
+        leftHandle.style.left = pxPerInch + 'px';
+        rightHandle.style.left = (ruler.offsetWidth - pxPerInch) + 'px';
+        updateMargins();
+
+    }
+</script>
+
+</body>
+</html>
